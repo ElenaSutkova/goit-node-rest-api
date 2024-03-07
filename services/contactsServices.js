@@ -6,7 +6,6 @@ const contactsPatch = patch.resolve("db", "contacts.json")
 
 async function contactsList() {
     const data = await fs.readFile(contactsPatch)
-
     return JSON.parse(contacts)
 };
 
