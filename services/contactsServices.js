@@ -1,6 +1,6 @@
-const fs = require("fs/promises")
-const patch = require("path")
-const { v4: uuidv4 } = require("uuid")
+import fs from "fs/promises"
+import path from "path"
+import { uuid } from 'uuidv4';
 
 const contactsPatch = patch.resolve("db", "contacts.json")
 
@@ -33,7 +33,7 @@ async function contactRemove(contactId) {
 async function addContact(name, email, phone) {
     const contacts = await contactsList()
     const newContact = {
-        id: uuidv4(),
+        id: uuid(),
         name,
         email,
         phone,
