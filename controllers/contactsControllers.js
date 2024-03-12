@@ -5,7 +5,7 @@ import { createContactSchema, updateContactSchema } from "../schemas/contactsSch
 export const getAllContacts = async (req, res, next) => {
     try {
         const contacts = await Contact.find();
-        res.json(contacts);
+        res.status(200).json(contacts);
     }
     catch (error) {
         next(error)
@@ -17,7 +17,7 @@ export const getOneContact = async (req, res, next) => {
         const { id } = req.params
         const contact = await Contact.findById(id)
         if (!contact) {
-            throw HttpError(404)
+            throw HttpError(404, "Not found")
         }
         res.status(200).json(contact)
     } catch (error) {
@@ -53,24 +53,28 @@ export const createContact = async (req, res, next) => {
     }
 };
 
-export const updateContact = async (req, res) => {
-    const { id } = req.params
-    const { name, email, phone } = req.body;
-    if (!name && !email && !phone) {
-        throw HttpError(400, "Body must have at least one field")
-    }
+export const updateContact = async (req, res, next) => {
+    try {
+        const { id } = req.params
+        const { name, email, phone } = req.body;
+        if (!name && !email && !phone) {
+            throw HttpError(400, "Body must have at least one field")
+        }
 
-    const { error } = updateContactSchema.validate(req.body);
-    if (error) {
-        throw HttpError(400, error.message);
-    }
+        const { error } = updateContactSchema.validate(req.body);
+        if (error) {
+            throw HttpError(400, error.message);
+        }
 
-    const contact = await Contact.findByIdAndUpdate(id, { name, email, phone }, { new: true });
-    if (!contact) {
-        throw HttpError(404)
+        const contact = await Contact.findByIdAndUpdate(id, { name, email, phone }, { new: true });
+        if (!contact) {
+            throw HttpError(404, "Not found")
+        }
+        res.status(200).json(contact);
+    } catch (error) {
+        next(error)
     }
-    res.status(200).json(contact);
-};
+}; 
 
 export const updateStatusContact = async (req, res, next) => {
     try {
@@ -84,6 +88,7 @@ export const updateStatusContact = async (req, res, next) => {
 
         contact.favorite = favorite;
         await contact.save();
+
         res.status(200).json(contact);
     } catch (error) {
         next(error)
