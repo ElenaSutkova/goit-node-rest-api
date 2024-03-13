@@ -1,4 +1,5 @@
 import express from "express";
+import authMiddleware from "../middleware/authMiddleware.js";
 import {
   getAllContacts,
   getOneContact,
@@ -10,17 +11,17 @@ import {
 
 const contactsRouter = express.Router();
 
-contactsRouter.get("/", getAllContacts);
+contactsRouter.get("/", authMiddleware, getAllContacts);
 
-contactsRouter.get("/:id", getOneContact);
+contactsRouter.get("/:id", authMiddleware, getOneContact);
 
-contactsRouter.delete("/:id", deleteContact);
+contactsRouter.delete("/:id", authMiddleware, deleteContact);
 
-contactsRouter.post("/", createContact);
+contactsRouter.post("/", authMiddleware, createContact);
 
-contactsRouter.put("/:id", updateContact);
+contactsRouter.put("/:id", authMiddleware, updateContact);
 
-contactsRouter.patch("/:contactId/favorite", updateStatusContact);
+contactsRouter.patch("/:contactId/favorite", authMiddleware, updateStatusContact);
 
 
 export default contactsRouter;
