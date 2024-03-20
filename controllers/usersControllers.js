@@ -7,6 +7,9 @@ import path from "path";
 import gravatar from "gravatar";
 import fs from "fs/promises";
 import Jimp from "jimp"
+import { sendVerificationEmail } from "../services/emailServices.js";
+import { uuid } from 'uuidv4';
+
 
 const avatarsDir = path.resolve('public', 'avatars');
 
@@ -19,15 +22,11 @@ export const registerUser = async (req, res, next) => {
         }
         const avatarURL = gravatar.url(email, {protocol: 'https', s: '250'})
         const hashPassword = await bcrypt.hash(password, 10);
-        const newUser = await User.create({ ...req.body, password: hashPassword, avatarURL });
-        res.status(201).json(
-            {
-                "users": {
-                    email: newUser.email,
-                    subscription: newUser.subscription,
-                }
-            }
-        )
+        const verificationToken = uuid(); 
+        const newUser = new User({ email, password: hashPassword, avatarURL, verificationToken });
+        await newUser.save();
+        await sendVerificationEmail(newUser.email, newUser.verificationToken);
+        res.status(201).json({ user: {email: newUser.email, subscription: newUser.subscription}})
     }
     catch (error) {
         next(error)
@@ -48,20 +47,14 @@ export const loginUser = async (req, res, next) => {
             throw HttpError(401, 'Email or password is wrong');
         }
 
-        const token = jwt.sign(
-            {
-                id: user._id,
-                name: user.name,
-            },
-            process.env.JWT_SECRET,
-            { expiresIn: 60 * 60 }
-        );
+        const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, { expiresIn: '1h' })
+        user.token = token;
 
-        await User.findByIdAndUpdate(user._id, { token });
+        await User.findByIdAndUpdate({ verificationToken }, { verify: true, verificationToken: null });
 
         res.json({
             token,
-            "users": {
+            user: {
                 email: user.email,
                 subscription: user.subscription,
             }
@@ -73,9 +66,12 @@ export const loginUser = async (req, res, next) => {
 
 export const logoutUser = async (req, res, next) => {
     try {
-        const { _id } = req.user;
-        await User.findOneAndUpdate(_id, { token: '' });
-        throw HttpError(204);
+        req.user.token = null;
+        await User.findOneAndUpdate(
+            { verificationToken },
+            { verify: true, verificationToken: null }
+        );
+        res.status(204).end()
     } catch (error) {
         next(error)
     }
@@ -95,23 +91,73 @@ export const getCurrentUser = async (req, res, next) => {
 
 export const updateAvatar = async (req, res, next) => {
     try {
-        const { _id } = req.user;
         if (!req.file) {
-            throw HttpError(400, "please add your file")
+            throw HttpError(400, 'Avatar file is required');
         }
-        const { path: tempUpload, originalname } = req.file;
-        const filename = `${_id}_${originalname}`;
-        const resultUpload = path.join(avatarsDir, filename);
+        const userId = req.user._id;
+        const { filename } = req.file;
+        const user = await User.findById(userId);
+        
+        if (!user) {
+            throw HttpError(404, 'User not found')
+        }
 
-        const img = await Jimp.read(tempUpload);
-        await img.resize(250, 250).quality(60).write(tempUpload);
-        await fs.rename(tempUpload, resultUpload);
-        const avatarURL = path.join("avatars", filename);
-        await User.findByIdAndUpdate(_id, { avatarURL });
-        res.json({
-            avatarURL
-        })
+        const img = await Jimp.read(req.file.path);
+        await img.cover(250, 250).writeAsync(req.file.path);
+
+        const avatarPath = `public/avatars/${filename}`;
+        const avatarURL = `avatars/${filename}`;
+
+        await fs.rename(req.file.path, avatarPath);
+        user.avatarURL = avatarURL;
+        await User.findOneAndUpdate(
+            { verificationToken },
+            { verify: true, verificationToken: null }
+        );
+        res.status(200).json({ avatarURL });
     } catch (error) {
         next(error)
     }
-}
+};
+
+export const verifyUser = async (req, res, next) => {
+    try {
+        const { verificationToken } = req.params;
+        const user = await User.findOne({ verificationToken });
+        
+        if (!user) {
+            throw HttpError(404, 'User not found')
+        }
+
+        user.verify = true;
+        user.verificationToken = null;
+        await User.findOneAndUpdate(
+            { verificationToken },
+            { verify: true, verificationToken: null }
+        );
+        res.status(200).json({ message: 'Verification successful' })
+    } catch (error) {
+        next(error)
+    }
+};
+
+export const resendVerificationEmail = async (req, res, next) => {
+    try {
+        const { email } = req.body;
+        const user = await User.findOne({ email });
+
+        if (!user) {
+            throw HttpError(404, 'User not found')
+        }
+
+        if (user.verify) {
+            throw HttpError(400, 'Verification has already been passed')
+        }
+
+        await sendVerificationEmail(user.email, user.verificationToken);
+
+        res.status(200).json({ message: 'Verification email sent' });
+    } catch (error) {
+        next(error)
+    }
+};
